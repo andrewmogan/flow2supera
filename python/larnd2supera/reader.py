@@ -56,20 +56,9 @@ class InputReader:
         
         if type(input_files) == str:
             input_files = [input_files]
-            
-        for f in input_files:
-            with h5.File(f,'r') as fin:
-                mc_packets_assn.append(fin['mc_packets_assn'][:])
-                packets.append(fin['packets'][:])
-                tracks.append(fin['tracks'][:])
-                trajectories.append(fin['trajectories'][:])
-                if verbose: print('Read-in:',f)
-                
-        self._mc_packets_assn = np.concatenate(mc_packets_assn)
-        self._packets = np.concatenate(packets)
-        self._tracks  = np.concatenate(tracks )
-        self._trajectories = np.concatenate(trajectories)
-        
+
+        GetDatasets(input_files,verbose)
+
         # create mapping
         self._packet2event = EventParser.packet_to_eventid(self._mc_packets_assn, self._tracks)
         
@@ -104,7 +93,53 @@ class InputReader:
 
         # Now it's safe to assume all readout groups for every event shares the same T0
         self._event_t0s = self._event_t0s.flatten()
+
+    def GetDatasets(self,input_files,verbose):
+        file_format = CheckFileFormat(input_files) 
+
+        if file_format == 'raw_larndsim':
+            mc_packets_path   = 'mc_packets_assn'
+            packets_path      = 'packets'
+            tracks_path       = 'tracks'
+            trajectories_path = 'trajectories'
+        elif file_format == 'larnd_flow':
+            mc_packets_path   = 'charge/packets/data/mc_packets_assn'
+            packets_path      = 'charge/packets/data/packets'
+            tracks_path       = 'charge/packets/data/tracks'
+            trajectories_path = 'charge/packets/data/trajectories'
+
+        if verbose: print('Input format determined to be {}', file_format)
+
+        for f in input_files:
+            with h5.File(f,'r') as fin:
+                mc_packets_assn.append(fin[mc_packets_path][:])
+                packets.append(fin[packets_path][:])
+                tracks.append(fin[tracks_path][:])
+                trajectories.append(fin[trajectories_path][:])
+                if verbose: print('Read-in:',f)
+                
+        self._mc_packets_assn = np.concatenate(mc_packets_assn)
+        self._packets = np.concatenate(packets)
+        self._tracks  = np.concatenate(tracks )
+        self._trajectories = np.concatenate(trajectories)
         
+        
+    # TODO Current method is simplistic. Think of something more future-proof
+    def CheckFileFormat(input_files):
+        file_type = ''
+        infile = input_files[0]
+        with h5.File(infile,'r') as fin:
+            if 'packets' in fin:
+                file_type = 'raw_larndsim'
+            elif 'charge/packets/data' in fin:
+                file_type = 'larnd_flow'
+            else:
+                raise ValueError('
+                    Unrecognized input file format. Must be an HDF5 file in either
+                    raw larnd-sim (packets) format or ndlar_flow format'
+                )
+
+        return file_type
 
     def GetEvent(self,event_id):
         
