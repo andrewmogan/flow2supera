@@ -73,8 +73,6 @@ def run_supera(out_file='larcv.root',
         EventInput = driver.ReadEvent(input_data)
         time_convert = time.time() - t1
 
-        # TODO Seems to run, but how to check it's really working?
-        # TODO Should this be supera_driver or driver?
         t2 = time.time()
         driver.GenerateImageMeta(EventInput)
         driver.GenerateLabel(EventInput) 
