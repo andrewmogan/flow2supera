@@ -102,7 +102,6 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         
         self._trackid2idx.clear()
         self._trackid2idx.reserve(len(data.trajectories))
-        #supera_event = []
 
         # 1. Loop over trajectories, create one supera::ParticleInput for each
         #    store particle inputs in list to fill parent information later
@@ -173,16 +172,7 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
                 self._log['bad_track_id'][-1]+=1
             self._log['packet_total'][-1]+=len(data.packets)
 
-            
-        #print(len(np.unique(track_ids[track_ids>=0])),'valid track IDs... min ID',np.min(track_ids[np.where(track_ids>=0)]),
-        #      'first track index:',data.first_track_id)
-        #print('min track ID location:',np.where(track_ids == np.min(track_ids[np.where(track_ids>=0)]))[0])
-        #print('first track ID location:',np.where(track_ids == data.first_track_id)[0])
-        #print('How many valid track IDs below the first track ID?')
-        #print(len(np.unique(track_ids[(track_ids>=0) & (track_ids<data.first_track_id)])))
-        #print('Track ID range:',np.min(track_ids[track_ids>=0]),'=>',np.max(track_ids[track_ids>=0]))
         track_ids = np.subtract(track_ids, data.first_track_id*(track_ids!=-1))
-        #print('Track ID range:',np.min(track_ids[track_ids>=0]),'=>',np.max(track_ids[track_ids>=0]))
         if verbose:
             print('track_ids after:\n', track_ids)
 
@@ -301,8 +291,6 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         )
 
         traj_parent_id = trajectory['parentID']
-        # This now causes errors?
-        #if traj_parent_id == -1: p.parent_trackid = supera.kINVALID_TRACKID
         if traj_parent_id == -1: p.parent_trackid = p.trackid
         else:                    p.parent_trackid = int(trajectory['parentID'])
 
