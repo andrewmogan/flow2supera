@@ -99,9 +99,11 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
 
         supera_event = supera.EventInput()
         supera_event.reserve(len(data.trajectories))
+        print('[DRIVER] Reserved supera_input len', len(supera_event))
         
         self._trackid2idx.clear()
         self._trackid2idx.reserve(len(data.trajectories))
+        #supera_event = []
 
         # 1. Loop over trajectories, create one supera::ParticleInput for each
         #    store particle inputs in list to fill parent information later
@@ -172,7 +174,16 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
                 self._log['bad_track_id'][-1]+=1
             self._log['packet_total'][-1]+=len(data.packets)
 
+            
+        #print(len(np.unique(track_ids[track_ids>=0])),'valid track IDs... min ID',np.min(track_ids[np.where(track_ids>=0)]),
+        #      'first track index:',data.first_track_id)
+        #print('min track ID location:',np.where(track_ids == np.min(track_ids[np.where(track_ids>=0)]))[0])
+        #print('first track ID location:',np.where(track_ids == data.first_track_id)[0])
+        #print('How many valid track IDs below the first track ID?')
+        #print(len(np.unique(track_ids[(track_ids>=0) & (track_ids<data.first_track_id)])))
+        #print('Track ID range:',np.min(track_ids[track_ids>=0]),'=>',np.max(track_ids[track_ids>=0]))
         track_ids = np.subtract(track_ids, data.first_track_id*(track_ids!=-1))
+        #print('Track ID range:',np.min(track_ids[track_ids>=0]),'=>',np.max(track_ids[track_ids>=0]))
         if verbose:
             print('track_ids after:\n', track_ids)
 
@@ -235,6 +246,7 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
                 edep.dedx = packet_track['dEdx']
 
                 # register EDep
+                print("[DRIVER] self._trackid2idx[int(packet_track['trackID'])]", self._trackid2idx[int(packet_track['trackID'])])
                 if edep.t >= 0:
                     supera_event[self._trackid2idx[int(packet_track['trackID'])]].pcloud.push_back(edep)
 
@@ -271,8 +283,12 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         # Larnd-sim stores a lot of these fields as numpy.uint32, 
         # but Supera/LArCV want a regular int, hence the type casting
         # TODO Is there a cleaner way to handle this?
-        p.id             = int(trajectory['eventID'])
+
+        # TODO Looks like things have changed...spillID should now be used for
+        # image-wide ID, and eventID should be used for interactionID...I think
+        #p.id             = int(trajectory['eventID']) # This gets written to supera_event.size() anyway
         #p.interaction_id = trajectory['interactionID']
+        p.interaction_id = trajectory['eventID']
         p.trackid        = int(trajectory['trackID'])
         p.pdg            = int(trajectory['pdgId'])
         p.px = trajectory['pxyz_start'][0] 
@@ -291,6 +307,8 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         )
 
         traj_parent_id = trajectory['parentID']
+        # This now causes errors?
+        #if traj_parent_id == -1: p.parent_trackid = supera.kINVALID_TRACKID
         if traj_parent_id == -1: p.parent_trackid = p.trackid
         else:                    p.parent_trackid = int(trajectory['parentID'])
 
