@@ -7,6 +7,8 @@ from LarpixParser import hit_parser as HitParser
 import yaml
 from yaml import Loader
 import larnd2supera
+import objgraph
+from memory_profiler import profile
 
 class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
 
@@ -88,6 +90,7 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         super().ConfigureFromText(txt)
 
 
+    @profile
     def ReadEvent(self, data, verbose=False):
         
         start_time = time.time()
@@ -99,21 +102,29 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
 
         supera_event = supera.EventInput()
         supera_event.reserve(len(data.trajectories))
+        print('[DRIVER] reserve', len(data.trajectories), 'for supera_event')
         
         self._trackid2idx.clear()
         self._trackid2idx.reserve(len(data.trajectories))
+        self._trackid2idx.resize(len(data.trajectories), supera.kINVALID_INDEX)
         #supera_event = []
 
         # 1. Loop over trajectories, create one supera::ParticleInput for each
         #    store particle inputs in list to fill parent information later
 
-        for traj in data.trajectories:
-            # print("traj",traj)
+        for it, traj in enumerate(data.trajectories):
+        #for it in range(10):
+            traj = data.trajectories[it]
+            print('trajectory', it + 1, 'of', len(data.trajectories))
             part_input = supera.ParticleInput()
 
+            #print('[DRIVER] traj count', it)
+
             part_input.valid = True
-            part_input.part  = self.TrajectoryToParticle(traj)
+            part_input.part  = self.TrajectoryToParticle(traj, data.event_separator, data.first_trajectory_id)
+            print('[DRIVER] supera_event.size', supera_event.size())
             part_input.part.id = supera_event.size()
+            print('[DRIVER] Set ID')
             #part_input.type  = self.GetG4CreationProcess(traj)
             #supera_event.append(part_input)
             if self.GetLogger().verbose():
@@ -124,9 +135,24 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
             if traj['trackID'] < 0:
                 print('Negative track ID found',traj['trackID'])
                 raise ValueError
-            self._trackid2idx.resize(int(traj['trackID']+1),supera.kINVALID_INDEX)
+            #print('[DRIVER] trackid2idx initial:', self._trackid2idx)
+            #print('traj[trackID]', traj['trackID'])
+            #self._trackid2idx.resize(int(traj['trackID']+1),supera.kINVALID_INDEX)
+            #self._trackid2idx.resize(it+1,supera.kINVALID_INDEX)
+
             self._trackid2idx[int(traj['trackID'])] = part_input.part.id
+            print('[DRIVER] Set trackid2idx')
+            #self._trackid2idx[it] = int(traj['trackID'])
+
+            #self._trackid2idx.resize(it+1,supera.kINVALID_INDEX)
+            #self._trackid2idx[it] = part_input.part.id
+            #print('[DRIVER] trackid2idx:', self._trackid2idx)
+            #print('[DRIVER] part_input.part.id', part_input.part.id)
             supera_event.push_back(part_input)
+            print('[DRIVER] Pushed back')
+
+        print('[DRIVER] final trackid2idx:', self._trackid2idx)
+        print('[DRIVER] final len trackid2idx:', len(self._trackid2idx))
             
         if verbose:
             print("--- trajectory filling %s seconds ---" % (time.time() - start_time)) 
@@ -135,11 +161,16 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         # 2. Fill parent information for ParticleInputs created in previous loop
         for i,part in enumerate(supera_event):
             traj = data.trajectories[i]
+            print('[PARENT] traj[trackID]', traj['trackID'])
 
             parent=None            
             if(part.part.parent_trackid < self._trackid2idx.size()):
-                parent_index = self._trackid2idx[part.part.parent_trackid]
+                print('[PARENT] part.part.parent_trackid', part.part.parent_trackid)
+                #parent_index = self._trackid2idx[part.part.parent_trackid]
+                parent_index = next((i for i, x in enumerate(self._trackid2idx) if x == part.part.parent_trackid), None)
+                print('[PARENT] parent_index', parent_index)
                 if not parent_index == supera.kINVALID_INDEX:
+                    print('[PARENT] len supera_event', len(supera_event))
                     parent = supera_event[parent_index].part
                     part.part.parent_pdg = parent.pdg
                     
@@ -148,6 +179,8 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         # 3. Loop over "voxels" (aka packets), get EDep from xyz and charge information,
         #    and store in pcloud
         x, y, z, dE = HitParser.hit_parser_energy(data.t0, data.packets, self._geom_dict, self._run_config)
+        print('******Starting packet nonsense**********')
+        print('len packets:', len(data.packets))
         if verbose:
             print('Got x,y,z,dE = ', x, y, z, dE)
 
@@ -181,14 +214,17 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         #print('How many valid track IDs below the first track ID?')
         #print(len(np.unique(track_ids[(track_ids>=0) & (track_ids<data.first_track_id)])))
         #print('Track ID range:',np.min(track_ids[track_ids>=0]),'=>',np.max(track_ids[track_ids>=0]))
+        print('[DRIVER] pre-subtract track_ids', track_ids)
         track_ids = np.subtract(track_ids, data.first_track_id*(track_ids!=-1))
+        print('[DRIVER] subtract track_ids', track_ids)
         #print('Track ID range:',np.min(track_ids[track_ids>=0]),'=>',np.max(track_ids[track_ids>=0]))
         if verbose:
             print('track_ids after:\n', track_ids)
 
         mm2cm = 0.1 # For converting packet x,y,z values
         for ip, packet in enumerate(data.packets):
-            if verbose:
+            #if verbose:
+            if True:
                 print('*****************Packet', ip, '**********************')
 
             # If packet_type !=0 continue
@@ -198,7 +234,8 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
             #print('TrackID index:',ip,'/',len(track_ids))
             packet_track_ids = track_ids[ip]
             packet_fractions = fractions[ip]
-            if verbose:
+            #if verbose:
+            if True:
                 print('packet_track_ids:', packet_track_ids)
                 print('packet_fractions:', packet_fractions)
 
@@ -225,14 +262,18 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
                 continue
 
             for t in range(len(packet_track_ids)):
-                if verbose:
+                #if verbose:
+                if True:
                     print('----Packet trackID', t, '-----')
 
                 # 2023-02-12 commented out by Kazu: we should handle -1 which might be noise or induced current
-                if packet_track_ids[t] <= -1: continue
+                if packet_track_ids[t] <= -1: 
+                    print('Negative packet trackID')
+                    continue
                 
                 #print(packet_track_ids[t])
                 packet_track = data.tracks[packet_track_ids[t]]
+                print('packet_track_ids[t]', packet_track_ids[t])
                 edep = supera.EDep()
 
                 edep.x,edep.y,edep.z = x[ip]*mm2cm, y[ip]*mm2cm, z[ip]*mm2cm
@@ -245,8 +286,15 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
                 edep.dedx = packet_track['dEdx']
 
                 # register EDep
+                print('[DRIVER] len supera_event', len(supera_event))
                 if edep.t >= 0:
-                    supera_event[self._trackid2idx[int(packet_track['trackID'])]].pcloud.push_back(edep)
+                    packet_index = next((i for i, x in enumerate(self._trackid2idx) if x == packet_track['trackID']), None)
+                    #packet_index = int([i for i, x in enumerate(self._trackid2idx) if x == packet_track['trackID']])
+                    print('packet_index', packet_index)
+                    print('packetid2idx[packet_index]', self._trackid2idx[packet_index])
+                    #supera_event[self._trackid2idx[int(packet_index)]].pcloud.push_back(edep)
+                    supera_event[packet_index].pcloud.push_back(edep)
+                    #supera_event[self._trackid2idx[int(packet_track['trackID'])]].pcloud.push_back(edep)
 
                 if not self._log is None:
                     self._log['ass_frac'][-1] += packet_fractions[t]
@@ -274,14 +322,15 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
 
         return supera_event
 
-    def TrajectoryToParticle(self, trajectory):
+    #@profile
+    def TrajectoryToParticle(self, trajectory, event_separator, first_trajectory_id):
         mm2cm = 0.1
 
         p = supera.Particle()
         # Larnd-sim stores a lot of these fields as numpy.uint32, 
         # but Supera/LArCV want a regular int, hence the type casting
         # TODO Is there a cleaner way to handle this?
-        p.id             = int(trajectory['eventID'])
+        p.id             = int(trajectory[event_separator])
         #p.interaction_id = trajectory['interactionID']
         p.trackid        = int(trajectory['trackID'])
         p.pdg            = int(trajectory['pdgId'])
@@ -301,16 +350,25 @@ class SuperaDriver(edep2supera.edep2supera.SuperaDriver):
         )
 
         traj_parent_id = trajectory['parentID']
+        print('[TRAJ2PART] traj parent ID:', traj_parent_id)
+        print('[TRAJ2PART] particle track ID:', p.trackid)
         # This now causes errors?
         #if traj_parent_id == -1: p.parent_trackid = supera.kINVALID_TRACKID
-        if traj_parent_id == -1: p.parent_trackid = p.trackid
-        else:                    p.parent_trackid = int(trajectory['parentID'])
+        # Subtract first_trajectory_id so that each parent index is within the range of the event trajectories
+        if traj_parent_id == -1: p.parent_trackid = int(p.trackid - first_trajectory_id)
+        else:                    
+            print('[ELSE] trajectory[parentID]', trajectory['parentID'])
+            print('[ELSE] diff:', trajectory['parentID'] - first_trajectory_id)
+            p.parent_trackid = int(trajectory['parentID'] - first_trajectory_id)
+
+        print('[TRAJ2PART] particle parent ID:', p.parent_trackid)
 
         if supera.kINVALID_TRACKID in [p.trackid, p.parent_trackid]:
             print('Unexpected to have an invalid track ID',p.trackid,
                   'or parent track ID',p.parent_trackid)
             raise ValueError
         
+        print('[TRAJ2PART] Returning')
         return p
         
         
