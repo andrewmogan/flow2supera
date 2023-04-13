@@ -33,6 +33,8 @@ setup(
         'scikit-build',
         'supera',
         'edep2supera',
+        'objgraph',
+        'memory_profiler',
     ],
     long_description=long_description,
     long_description_content_type='text/markdown',
