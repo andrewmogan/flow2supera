@@ -3,6 +3,21 @@ import h5flow
 import numpy as np
 
 class InputEvent:
+    """
+    Class for storing event-level information from the datasets
+    read by the FlowReader class.
+
+    Attributes
+    ----------
+    event_id (int): Index of event to be read.
+    segments (HDF5 dataset): Dataset containing true edep-sim segments.
+    hit_indices (int, int): Pair of indices corresponding to the first and
+                            last hits of this event.
+    hits: (HDF5 dataset): Dataset containing reconstructed hits as defined
+                          by ndlar_flow.
+    backtracked_hits: (HDF5 dataset): 
+    """
+
     event_id = -1
     segments = None
     hit_indices = None
@@ -16,6 +31,10 @@ class InputEvent:
     event_separator = ''
 
 class FlowReader:
+    """
+    Class for storing HDF5 datasets from ndlar_flow. This structure
+    is based on that used by the h5flow package. 
+    """
     
     def __init__(self, parser_run_config, input_files=None):
         self._input_files = input_files
@@ -44,6 +63,10 @@ class FlowReader:
             yield self.GetEvent(entry)
 
     def ReadFile(self, input_files, verbose=False):
+        """
+        Read the input file and extract necessary datasets.
+        """
+
         event_ids = []
         calib_final_hits  = []
         event_hit_indices = []
@@ -87,13 +110,9 @@ class FlowReader:
             self._event_hit_indices = flow_manager[event_hit_indices_path]
             self._hits = flow_manager[calib_final_hits_path+'data']
             self._backtracked_hits = flow_manager[backtracked_hits_path]
+
             self._is_sim = 'mc_truth' in fin.keys()
             if self._is_sim:
-                #self._segments = flow_manager[events_path,
-                #                              calib_final_hits_path,
-                #                              calib_prompt_hits_path,
-                #                              packets_path,
-                #                              segments_path]
                 self._segments = flow_manager[segments_path+'data']
                 self._trajectories = flow_manager[trajectories_path]
                 self._interactions = flow_manager[interactions_path]
@@ -114,11 +133,12 @@ class FlowReader:
 
     # To truth associations go as hits -> segments -> trajectories
     def GetEventTruthFromHits(self, backtracked_hits, segments, trajectories):
-        '''
+        """
         The Driver class needs to know the number of event trajectories in advance.
         This function uses the backtracked hits dataset to map hits->segments->trajectories
         and fills segment and trajectory IDs corresponding to hits. 
-        '''
+        """
+
         max_contributors = 100
         hit_threshold = 0.0001
         #backtracked_hits = self._backtracked_hits
@@ -152,6 +172,9 @@ class FlowReader:
         return truth_dict
 
     def GetEvent(self, event_index):
+        """
+        Store event-specific information using the event index.
+        """
         
         if event_index >= len(self._event_ids):
             print('Entry {} is above allowed entry index ({})'.format(event_index, len(self._event_ids)))
@@ -175,28 +198,24 @@ class FlowReader:
         truth_ids_dict = self.GetEventTruthFromHits(result.backtracked_hits, 
                                                     self._segments, 
                                                     self._trajectories)
-        #result.trajectories = self._trajectories
         event_trajectory_ids = truth_ids_dict['trajectory_ids']
         trajectories_array = np.array(self._trajectories)
         result.trajectories = trajectories_array[np.isin(trajectories_array['traj_id'], event_trajectory_ids)]
 
-        #result.segments = self._segments[result.event_id]
         event_segment_ids = truth_ids_dict['segment_ids']
         segments_array = np.array(self._segments)
         result.segments = segments_array[np.isin(segments_array['segment_id'], event_segment_ids)]
 
-        #result.segments = self._segments
-        #result.segments = self._segments[self._segments['event_id']==result.event_id]
-        # Keep trajectories as-is and use the segments' traj_id to get event trajectories in driver
-        #result.trajectories = self._trajectories[self._trajectories['event_id']==result.event_id]
-        #result.trajectories = self._trajectories
-        #result.interactions = self._interactions[result.event_id]
-        #result.segment_index_min = mask.nonzero()[0][0]
         result.interactions = self._interactions
         
         return result  
 
     def EventDump(self, input_event):
+        """
+        Print information about this event. input_event is obtained
+        using the GetEvent function above.
+        """
+
         print('-----------EVENT DUMP-----------------')
         print('Event ID {}'.format(input_event.event_id))
         print('Event t0 {}'.format(input_event.t0))
@@ -205,8 +224,5 @@ class FlowReader:
         print('hits shape:', input_event.hits.shape)
         print('segments in this event:', len(input_event.segments))
         print('trajectories in this event:', len(input_event.trajectories))
-        #print('trajectories:', input_event.trajectories)
-        #print('segments:', input_event.segments)
-        #print('trajectories:', input_event.trajectories)
         print('interactions in this event:', len(input_event.interactions))
 
